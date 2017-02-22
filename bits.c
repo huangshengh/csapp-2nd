@@ -182,7 +182,7 @@ int logicalShift(int x, int n) {
 
 int bitCount(int x)
 {
-    int c;
+    int c=0;
     c = (x&0x55555555)+((x>>1)&0x55555555);//+优先级要比&高
     c = (c&0x33333333)+((c>>2)&0x33333333);
     c = (c&0x0f0f0f0f)+((c>>4)&0x0f0f0f0f);
@@ -369,14 +369,14 @@ unsigned float_i2f(int x) {
  */
 unsigned float_twice(unsigned uf) {
     unsigned f = uf;
-    if ((f & 0x7F800000) == 0) //
+    if ((f & 0x7F800000) == 0) //exp位置全是0，
     {
         //左移一位
         f = ((f & 0x007FFFFF) << 1) | (0x80000000 & f);
     }
-    else if ((f & 0x7F800000) != 0x7F800000)
+    else if ((f & 0x7F800000) != 0x7F800000)//exp位置不全是0，那就给他指数加1
     {
-        f =f + 0x00800000;
+        f =f + 0x00800000;//就是加了一个指数最低位哪个位置，给2^E的E加1，相当于*2.
     }
     return f;
 }
