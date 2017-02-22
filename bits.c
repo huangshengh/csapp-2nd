@@ -225,7 +225,7 @@ int tmin(void) {
  *   Rating: 2
  */
 int fitsBits(int x, int n) {
-    int shiftNumber = 32 + (~n + 1);// 32 - n
+    int shiftNumber = 32 + (~n+1);// 32 - n
     return !(x^((x<<shiftNumber)>>shiftNumber));
     /*先左移32-n位，在右移32-n位，即保留最后n位数。在与x异或
      若两者相同表示x可被表示为一个n位整数，！0为1
@@ -274,10 +274,19 @@ int isPositive(int x) {
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 24
  *   Rating: 3
+ 同号的时候只要检查x-y的值是否大于0；
+ 没有用到溢出来检查，只要异号，就直接看x的符号就好了。
+ 如果x异号的话，只需要考虑x就好了，x是1那么就<=,返回1，如果x是0就返回0，不小于。
+ 
  */
 int isLessOrEqual(int x, int y) {
-    int sign = ((~x)+1+y)>>31;//(y-x)>>31
-    return !sign;
+    int sigx = (x>>31)&1;//get the symbol
+    int sigy = (y>>31)&1;
+    int sig = (sigx^sigy)&sigx;//同号是0，异号是x的号
+    int temp = x+((~y)+1);//x-y
+    temp = ((temp>>31)&1)&(!(sigx^sigy));//x,y同号的话temp最高位不变，异号的话是0
+    return (sig|temp|((!(x^y))));
+    
 }
 /*
  * ilog2 - return floor(log base 2 of x), where x > 0
@@ -285,14 +294,30 @@ int isLessOrEqual(int x, int y) {
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 90
  *   Rating: 4
+ 不是返回指数，返回最高位1的位置,若是大于0，就返回16
+    二分法，左移右移看是否不是0.
  */
 int ilog2(int x) {
-  return 2;
+    int word = (!!(x>>16))<<4;//!!是为了将x>>16变成一个1
+    word = word+((!!(x>>(word+8)))<<3);//如果word不是0，那么就要在16位基础上再往前看
+                                     //如果word是0，就右移8位
+    word = word +((!!(x>>(word+4)))<<2);
+    word = word +((!!(x>>(word+2)))<<1);
+    word = word +(!!(x>>(word+1)));
+    
+    return word;
 }
 /* 
  * float_neg - Return bit-level equivalent of expression -f for
  *   floating point argument f.
+ 返回-f的位级表示
  *   Both the argument and result are passed as unsigned int's, but
+ 
+ 参数和返回值都是unsigned但是都被解释为单精度浮点数。当小数域全为0时，是nan
+ 
+ 浮点数是用IEEE浮点表示，v=(-1)^S*M*2^E;
+ 规则：E = e - bias,m=1+f; e 是exp
+ 不规则： E = 1-bias,m = f;
  *   they are to be interpreted as the bit-level representations of
  *   single-precision floating point values.
  *   When argument is NaN, return argument.
@@ -301,10 +326,17 @@ int ilog2(int x) {
  *   Rating: 2
  */
 unsigned float_neg(unsigned uf) {
- return 2;
+    unsigned result;
+    unsigned tmp;
+    result=uf ^ 0x80000000; //将符号位改反
+    tmp=uf & (0x7fffffff);
+    if(tmp > 0x7f800000)//,阶码全是1，小数域非0。此时是NaN
+        result = uf;
+    return result;
 }
 /* 
  * float_i2f - Return bit-level equivalent of expression (float) x
+ 返回单精度浮点数x的位级表示
  *   Result is returned as unsigned int, but
  *   it is to be interpreted as the bit-level representation of a
  *   single-precision floating point values.
@@ -313,6 +345,15 @@ unsigned float_neg(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
+    unsigned sign = 0;
+    unsigned exp =0;//E = e-127;这个用来表示偏置量；
+    
+    
+    unsigned M = 0;
+    
+    sign = ((x>>31)&0x1)<<31;
+    unsigned res = 0;
+    
   return 2;
 }
 /* 
@@ -327,5 +368,15 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  return 2;
+    unsigned f = uf;
+    if ((f & 0x7F800000) == 0) //
+    {
+        //左移一位
+        f = ((f & 0x007FFFFF) << 1) | (0x80000000 & f);
+    }
+    else if ((f & 0x7F800000) != 0x7F800000)
+    {
+        f =f + 0x00800000;
+    }
+    return f;
 }
