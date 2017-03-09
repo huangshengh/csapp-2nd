@@ -1,0 +1,329 @@
+Phase_1 
+
+是判断两个string是否相等，je相等就跳出，第一个string就是从8（%ebp）push 进%eax的，第二个参数就是下面的那个push，也就是说只要push进%eax的string等于下面那个给定的就是不会爆炸，可是是怎么判断下面的那个push，push的是位置而不是立即数的呢？
+
+根据在string_not_equal function里调用的string_length可以看见使用参数的时候用的是存储器寻址，所以传入的两个参数都是指针形式。
+
+在phase1 函数中，用户输入的string和它给的string被压入栈了，这样在phase1中调用比较的时候就才可以使用两个参数，8（%ebp），12（%ebp）可以存放指针和数据。
+
+$134518720 转化成16进制就是0x80497c0。
+也就是说用gdb找到这个位置的值就是phase 1. 
+
+Public speaking is very easy.
+其实主要是gdb的调试使用。
+
+Examine memory： X/FMT ADDRESS 检查内存
+
+FMT is a repeat count followed by a format letter and a size letter.
+Format letters are o(octal), x(hex), d(decimal), u(unsigned decimal),
+  t(binary), f(float), a(address), i(instruction), c(char), s(string)
+  and z(hex, zero padded on the left).
+Size letters are b(byte), h(halfword), w(word), g(giant, 8 bytes).
+The specified number of objects of the specified size are printed
+according to the format.
+
+Fmt是重复计数后面跟着格式字母和大小字母。o八进制，x十六进制，d十进制，u无符号十进制，t二进制。。。。i指令。。z十六进制左边用0填充。
+
+b , h , w , g,决定展示元素的数量。
+
+	•	x/x 以十六进制输出
+	•	x/d 以十进制输出
+	•	x/c 以单字符输出
+	•	x/i  反汇编 – 通常，我们会使用 x/10i $ip-20 来查看当前的汇编（$ip是指令寄存器）
+	•	x/s 以字符串输出
+
+
+Break创建断点，run执行，disas打印当前的汇编，info registers查看当前寄存器的值，stepi分步执行，print $eax打印寄存器的值，因为phase_1里参数都是指针的形式所以打印出来的是地址，然后用x检查内存可以得到string。
+
+我输入的string是怎么成为指针的呢？
+
+
+Phase_2
+
+ret是一个字节的，所以可看见phase_2的pc是增加1就开始执行指令了。
+
+M[%ebp-24]不等于1，就爆炸。
+
+刚开始是按照phase_1进入了red_six_numbers，到这个函数来计算。其实不是的，从这个函数名可以看出，这个函数的主要作用是读入6个数字，将它们压入栈。
+
+%ebp-24 是第一个数的位置，计作n，则a[n]=1,然后根据后面的指令可以看出a[n] = n*a[n-1],因为是按字节算，所以位置每次变化都是-4.
+ 
+最后结果是 1 2 6 24 120 720
+
+
+Phase_3 难
+
+push 134518750 
+Push的是位置0x80497de处的值。
+用x/s 将此处的值显示出来是 “%d %c %d”
+
+Jump到.plt+150的位置，push了64，然后jump到函数开始，push 134526236 即0x804b51c位置处的数据。使用gdb查看，是8.
+调用.plt返回之后
+第一个cmpl是，%eax和2，%eax要大于2.
+然后[%ebp-12]这个位置的的值要小于7，所以这个值可以是0～6，
+然后jmpl	*134518760(,%eax,4)
+这个指令从0x80497e8这个地址处的数据和可能取到的值来结合决定跳转地址，这就是一个switch。
+
+这是个简介跳转所以用x／wx 	0x80497e8获得位置后直接跳到0x08040be0就好了。%eax选择0。
+8048be0:	b3 71 	movb	$113, %bl
+8048be2:	81 7d fc 09 03 00 00 cmpl $777,-4(%ebp)
+8048be9:	0f 84 a0 00 00 00 je 160 <phase_3+F7>
+
+8048c8f:	3a 5d fb 	cmpl -5(%ebp), %bl
+8048c92:	74 05 	je	5 <phase_3+101>
+8048c94:	e8 63 08 00 00 calll 2147 <explode_bomb>
+因为第二个数是字符所以113 是q，后面判断用户输入和bl所以输入是q
+所以第三个数是777
+
+调用断点，一步一步的看实现过程就看见了调用。plt是调用sscanf
+
+phase_4
+
+Push 8049808 
+输入的格式是%d，也就是说输入的是一个整数。
+phase_4:
+ 8048ce0:	55 	pushl	%ebp
+ 8048ce1:	89 e5 	movl	%esp, %ebp
+ 8048ce3:	83 ec 18 	subl $24, %esp
+ 8048ce6:	8b 55 08 	movl 8(%ebp), %edx
+ 8048ce9:	83 c4 fc 	addl $-4, %esp
+ 8048cec:	8d 45 fc 	leal -4(%ebp), %eax
+ 8048cef:	50 	pushl	%eax
+ 8048cf0:	68 08 98 04 08 pushl $134518792
+ 8048cf5:	52 	pushl	%edx
+#调用输入函数
+ 8048cf6:	e8 65 fb ff ff calll -1179 <.plt+150>
+ 8048cfb:	83 c4 10 	addl $16, %esp
+#%eax=1
+ 8048cfe:	83 f8 01 	cmpl $1, %eax
+ 8048d01:	75 06 	jne	6 <phase_4+29>
+#[%ebp-4] >0 这个是输入的值
+ 8048d03:	83 7d fc 00 	cmpl $0, -4(%ebp)
+ 8048d07:	7f 05 	jg	5 <phase_4+2E>
+ 8048d09:	e8 ee 07 00 00 calll 2030 <explode_bomb>
+ 8048d0e:	83 c4 f4 	addl $-12, %esp
+ 8048d11:	8b 45 fc 	movl -4(%ebp), %eax
+ 8048d14:	50 	pushl	%eax
+#调用func4，这个函数是计算斐波那契序列的
+ 8048d15:	e8 86 ff ff ff calll -122 <func4>
+ 8048d1a:	83 c4 10 	addl $16, %esp
+#返回的值是55，所以输入的值是多少。
+ 8048d1d:	83 f8 37 	cmpl $55, %eax
+ 8048d20:	74 05 	je	5 <phase_4+47>
+ 8048d22:	e8 d5 07 00 00 calll 2005 <explode_bomb>
+ 8048d27:	89 ec 	movl	%ebp, %esp
+ 8048d29:	5d 	popl	%ebp
+ 8048d2a:	c3 	retl
+ 8048d2b:	90 	nop
+
+phase_5 
+
+长度为6.
+phase_5:
+ 8048d2c:	55 	pushl	%ebp
+ 8048d2d:	89 e5 	movl	%esp, %ebp
+ 8048d2f:	83 ec 10 	subl $16, %esp
+#被调用者保存的寄存器
+ 8048d32:	56 	pushl	%esi
+ 8048d33:	53 	pushl	%ebx
+#从调用函数取出参数值
+ 8048d34:	8b 5d 08 	movl 8(%ebp), %ebx
+ 8048d37:	83 c4 f4 	addl $-12, %esp
+#从上面的栈帧中调用参数入栈
+ 8048d3a:	53 	pushl	%ebx
+ 8048d3b:	e8 d8 02 00 00 calll 728 <string_length>
+ 8048d40:	83 c4 10 	addl $16, %esp
+#输入字符串长度要为6
+ 8048d43:	83 f8 06 	cmpl $6, %eax
+ 8048d46:	74 05 	je	5 <phase_5+21>
+ 8048d48:	e8 af 07 00 00 calll 1967 <explode_bomb>
+#异或之后%edx 就是0，开始循环
+ 8048d4d:	31 d2 	xorl	%edx, %edx
+ 8048d4f:	8d 4d f8 	leal -8(%ebp), %ecx
+#isrveawhobpnutfg这个位置的值是什么鬼啊
+ 8048d52:	be 20 b2 04 08 movl $134525472, %esi
+#把%ebx的低位16位移到al中，此时edx已经是0，开始循环了。（%ebx+0）那应该就是第一个字符，放进%al中
+
+ 8048d57:	8a 04 1a 	movb (%edx,%ebx), %al
+#00001111和al与，保存al的低4位。
+ 8048d5a:	24 0f 	andb	$15, %al
+#符号扩展，al-》eax，al只有最低四位有值
+ 8048d5c:	0f be c0 	movsbl %al, %eax
+#把这个位置的值放在al中，
+分析2:  
+al的值是%esi的不同的偏移量，因为eax的值每次存换也会改变。后面只是把al的值放进ecx中，所以我们看看esi的每个字符，或许就是答案。
+ 8048d5f:	8a 04 30 	movb (%eax,%esi), %al
+#把al的值放在%ecx中，每次这个位置都加一，所以输入的值就是ecx这里的，
+Ecx本身的位置就ebp-8，后面会用到这个位置
+ 8048d62:	88 04 0a 	movb %al, (%edx,%ecx)
+#edx本身是0，现在加一，然后是和5比较，小于等于五，从0开始就正好是6个字符的循环，也就是一次处理一个字符。好吧我们再回去看看每次处理的是什么鬼。
+ 8048d65:	42 	incl	%edx
+ 8048d66:	83 fa 05 	cmpl $5, %edx
+ 8048d69:	7e ec 	jle	-20 <phase_5+2B>
+ 8048d6b:	c6 45 fe 00 	movb $0, -2(%ebp)
+ 8048d6f:	83 c4 f8 	addl $-8, %esp
+#这个push的地址是804980b，这个位置的字符串时giants，正好六位
+最后比较的就是giants和我们输入的字符，如果相等返回eax=0，就结束了。现在反回去看输入的字符。
+ 8048d72:	68 0b 98 04 08 pushl $134518795
+#这就是存放字符的地方
+
+ 8048d77:	8d 45 f8 	leal -8(%ebp), %eax
+#not——eqaul这个函数的参数应该数指针，所以现在要将参数入栈，只有入栈才有地址
+ 8048d7a:	50 	pushl	%eax
+ 8048d7b:	e8 b0 02 00 00 calll 688 <strings_not_equal>
+ 8048d80:	83 c4 10 	addl $16, %esp
+ 8048d83:	85 c0 	testl	%eax, %eax
+ 8048d85:	74 05 	je	5 <phase_5+60>
+ 8048d87:	e8 70 07 00 00 calll 1904 <explode_bomb>
+ 8048d8c:	8d 65 e8 	leal -24(%ebp), %esp
+ 8048d8f:	5b 	popl	%ebx
+ 8048d90:	5e 	popl	%esi
+ 8048d91:	89 ec 	movl	%ebp, %esp
+ 8048d93:	5d 	popl	%ebp
+ 8048d94:	c3 	retl
+ 8048d95:	8d 76 00 	leal (%esi), %esi
+
+现在，分析完了，那我先break 8048d7a这个位置，看卡寄存器的值，看看是不是就解决了。
+
+ info registers
+eax            0xbffff6b0 -1073744208
+ecx            0xbffff6b0 -1073744208
+edx            0x6	6
+ebx            0x804b7c0 134526912
+esp            0xbffff694 0xbffff694
+ebp            0xbffff6b8 0xbffff6b8
+esi            0x804b220 134525472
+edi            0x0	0
+eip            0x8048d7a 0x8048d7a <phase_5+78>
+eflags         0x283	[ CF SF IF ]
+cs             0x73	115
+ss             0x7b	123
+ds             0x7b	123
+es             0x7b	123
+fs             0x0	0
+gs             0x33	51
+(gdb) x/s 0xbffff6b0
+0xbffff6b0:	"oasfhv"
+竟然错了，吐了一口老血。好吧，换个思路看看。不过没想明白为什么会错。
+
+根据分析2:我们是把isrveawhobpnutfg这个字符串换成giants，把g放到第一个，所以偏移是15，找ascii表最后是1111的字符，以此类推吧。我找了一个全是大写的OPEKMA，最后四位相同的都可以。
+
+come on 。最后一phase。
+
+
+phase_6:
+
+好长啊，放弃吧。
+
+
+
+
+phase_6:
+ 8048d98:	55 	pushl	%ebp
+ 8048d99:	89 e5 	movl	%esp, %ebp
+ 8048d9b:	83 ec 4c 	subl $76, %esp
+ 8048d9e:	57 	pushl	%edi
+ 8048d9f:	56 	pushl	%esi
+ 8048da0:	53 	pushl	%ebx
+ 8048da1:	8b 55 08 	movl 8(%ebp), %edx
+#这个地址是804b26c，十进制读出是-3
+ 8048da4:	c7 45 cc 6c b2 04 08 movl $134525548, -52(%ebp)
+ 8048dab:	83 c4 f8 	addl $-8, %esp
+ 8048dae:	8d 45 e8 	leal -24(%ebp), %eax
+ 8048db1:	50 	pushl	%eax
+ 8048db2:	52 	pushl	%edx
+#这个函数的功能是读六个数字，压入栈，下面就是疯狂的跳转了。
+ 8048db3:	e8 20 02 00 00 calll 544 <read_six_numbers>
+ 8048db8:	31 ff 	xorl	%edi, %edi
+ 8048dba:	83 c4 10 	addl $16, %esp
+ 8048dbd:	8d 76 00 	leal (%esi), %esi
+ 8048dc0:	8d 45 e8 	leal -24(%ebp), %eax
+ 8048dc3:	8b 04 b8 	movl (%eax,%edi,4), %eax
+
+ 8048dc6:	48 	decl	%eax
+
+ 8048dc7:	83 f8 05 	cmpl $5, %eax
+#eax<=5无符号
+ 8048dca:	76 05 	jbe	5 <phase_6+39>
+ 8048dcc:	e8 2b 07 00 00 calll 1835 <explode_bomb>
+
+#edi=0，ebx=1
+ 8048dd1:	8d 5f 01 	leal 1(%edi), %ebx
+
+ 8048dd4:	83 fb 05 	cmpl $5, %ebx
+ 8048dd7:	7f 23 	jg	35 <phase_6+64>
+#eax=0
+ 8048dd9:	8d 04 bd 00 00 00 00 leal (,%edi,4), %eax
+ 8048de0:	89 45 c8 	movl %eax, -56(%ebp)
+ 8048de3:	8d 75 e8 	leal -24(%ebp), %esi
+#edx=eax
+ 8048de6:	8b 55 c8 	movl -56(%ebp), %edx
+#eax=（）
+ 8048de9:	8b 04 32 	movl (%edx,%esi), %eax
+#ebp-20 和ebp-24的大小
+ 8048dec:	3b 04 9e 	cmpl (%esi,%ebx,4), %eax
+
+ 8048def:	75 05 	jne	5 <phase_6+5E>
+ 8048df1:	e8 06 07 00 00 calll 1798 <explode_bomb>
+ #ebx+1
+ 8048df6:	43 	incl	%ebx
+ 8048df7:	83 fb 05 	cmpl $5, %ebx
+#有符号，小于等于，回到e6
+ 8048dfa:	7e ea 	jle	-22 <phase_6+4E>
+ 
+ 8048dfc:	47 	incl	%edi
+ 8048dfd:	83 ff 05 	cmpl $5, %edi
+ 8048e00:	7e be 	jle	-66 <phase_6+28>
+ 8048e02:	31 ff 	xorl	%edi, %edi
+ 8048e04:	8d 4d e8 	leal -24(%ebp), %ecx
+ 8048e07:	8d 45 d0 	leal -48(%ebp), %eax
+ 8048e0a:	89 45 c4 	movl %eax, -60(%ebp)
+ 8048e0d:	8d 76 00 	leal (%esi), %esi
+ 8048e10:	8b 75 cc 	movl -52(%ebp), %esi
+ 8048e13:	bb 01 00 00 00 movl $1, %ebx
+ 8048e18:	8d 04 bd 00 00 00 00 leal (,%edi,4), %eax
+ 8048e1f:	89 c2 	movl	%eax, %edx
+ 8048e21:	3b 1c 08 	cmpl (%eax,%ecx), %ebx
+ 8048e24:	7d 12 	jge	18 <phase_6+A0>
+ 8048e26:	8b 04 0a 	movl (%edx,%ecx), %eax
+ 8048e29:	8d b4 26 00 00 00 00 leal (%esi), %esi
+ 8048e30:	8b 76 08 	movl 8(%esi), %esi
+ 8048e33:	43 	incl	%ebx
+ 8048e34:	39 c3 	cmpl	%eax, %ebx
+ 8048e36:	7c f8 	jl	-8 <phase_6+98>
+ 8048e38:	8b 55 c4 	movl -60(%ebp), %edx
+ 8048e3b:	89 34 ba 	movl %esi, (%edx,%edi,4)
+ 8048e3e:	47 	incl	%edi
+ 8048e3f:	83 ff 05 	cmpl $5, %edi
+ 8048e42:	7e cc 	jle	-52 <phase_6+78>
+ 8048e44:	8b 75 d0 	movl -48(%ebp), %esi
+ 8048e47:	89 75 cc 	movl %esi, -52(%ebp)
+ 8048e4a:	bf 01 00 00 00 movl $1, %edi
+ 8048e4f:	8d 55 d0 	leal -48(%ebp), %edx
+ 8048e52:	8b 04 ba 	movl (%edx,%edi,4), %eax
+ 8048e55:	89 46 08 	movl %eax, 8(%esi)
+ 8048e58:	89 c6 	movl	%eax, %esi
+ 8048e5a:	47 	incl	%edi
+ 8048e5b:	83 ff 05 	cmpl $5, %edi
+ 8048e5e:	7e f2 	jle	-14 <phase_6+BA>
+ 8048e60:	c7 46 08 00 00 00 00 movl $0, 8(%esi)
+ 8048e67:	8b 75 cc 	movl -52(%ebp), %esi
+ 8048e6a:	31 ff 	xorl	%edi, %edi
+ 8048e6c:	8d 74 26 00 	leal (%esi), %esi
+ 8048e70:	8b 56 08 	movl 8(%esi), %edx
+ 8048e73:	8b 06 	movl	(%esi), %eax
+ 8048e75:	3b 02 	cmpl	(%edx), %eax
+ 8048e77:	7d 05 	jge	5 <phase_6+E6>
+ 8048e79:	e8 7e 06 00 00 calll 1662 <explode_bomb>
+ 8048e7e:	8b 76 08 	movl 8(%esi), %esi
+ 8048e81:	47 	incl	%edi
+ 8048e82:	83 ff 04 	cmpl $4, %edi
+ 8048e85:	7e e9 	jle	-23 <phase_6+D8>
+ 8048e87:	8d 65 a8 	leal -88(%ebp), %esp
+ 8048e8a:	5b 	popl	%ebx
+ 8048e8b:	5e 	popl	%esi
+ 8048e8c:	5f 	popl	%edi
+ 8048e8d:	89 ec 	movl	%ebp, %esp
+ 8048e8f:	5d 	popl	%ebp
+ 8048e90:	c3 	retl
+ 8048e91:	8d 76 00 	leal (%esi), %esi                
