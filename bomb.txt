@@ -210,11 +210,9 @@ gs             0x33	51
 
 come on 。最后一phase。
 
-
 phase_6:
 
 好长啊，放弃吧。
-
 
 
 
@@ -237,19 +235,25 @@ phase_6:
  8048db8:	31 ff 	xorl	%edi, %edi
  8048dba:	83 c4 10 	addl $16, %esp
  8048dbd:	8d 76 00 	leal (%esi), %esi
- 8048dc0:	8d 45 e8 	leal -24(%ebp), %eax
+
+
+ 
+
+ 
+#从c0到e02这部分代码就是一个嵌套循环，外面的变量是edi=0，edi<5,edi++
+里面的循环是ebx，ebx=1，ebx<=6,ebx++。
+是比较从ebp-24开始，每个元素之间的关系，但是它比较的是相等关系，比较的是前面六个数的相等关系，所以没有一个相等，不然就炸了。简直就是数组的冒泡排序啊，并且每个数字都要小于等于6，这尼玛不就是1，2，3，4，5，6，么。然后在这么多跳转，那就是有一定的顺序，会不会有0呢。
+
+ 8048dc0:	8d 45 e8 	leal -24(%ebp), %eax           
  8048dc3:	8b 04 b8 	movl (%eax,%edi,4), %eax
-
  8048dc6:	48 	decl	%eax
-
+#每个元素都要小于等于6
  8048dc7:	83 f8 05 	cmpl $5, %eax
 #eax<=5无符号
  8048dca:	76 05 	jbe	5 <phase_6+39>
  8048dcc:	e8 2b 07 00 00 calll 1835 <explode_bomb>
-
 #edi=0，ebx=1
  8048dd1:	8d 5f 01 	leal 1(%edi), %ebx
-
  8048dd4:	83 fb 05 	cmpl $5, %ebx
  8048dd7:	7f 23 	jg	35 <phase_6+64>
 #eax=0
@@ -262,7 +266,6 @@ phase_6:
  8048de9:	8b 04 32 	movl (%edx,%esi), %eax
 #ebp-20 和ebp-24的大小
  8048dec:	3b 04 9e 	cmpl (%esi,%ebx,4), %eax
-
  8048def:	75 05 	jne	5 <phase_6+5E>
  8048df1:	e8 06 07 00 00 calll 1798 <explode_bomb>
  #ebx+1
@@ -270,15 +273,28 @@ phase_6:
  8048df7:	83 fb 05 	cmpl $5, %ebx
 #有符号，小于等于，回到e6
  8048dfa:	7e ea 	jle	-22 <phase_6+4E>
- 
  8048dfc:	47 	incl	%edi
  8048dfd:	83 ff 05 	cmpl $5, %edi
  8048e00:	7e be 	jle	-66 <phase_6+28>
+
+
+
  8048e02:	31 ff 	xorl	%edi, %edi
  8048e04:	8d 4d e8 	leal -24(%ebp), %ecx
  8048e07:	8d 45 d0 	leal -48(%ebp), %eax
  8048e0a:	89 45 c4 	movl %eax, -60(%ebp)
  8048e0d:	8d 76 00 	leal (%esi), %esi
+ 
+
+ 
+#从这开始就是又一个循环比较了。
+edi=0;edi<=5;edi++
+看看这个循环体干了些什么。
+这个循环体里面又有两个小的循环。
+先是从-24（%ebp）开始比较每个和1的关系，1>=(-24+4i)(%ebp)的话就跳转到38处，那么最多有0，1会跳转。else：从0开始迭代比较其余元素的大小，每次都会改变esi，直至ebx和（-24+4i）（%ebp）处元素相等。然后把esi的值放在（ebp-60+4i）中
+
+
+
  8048e10:	8b 75 cc 	movl -52(%ebp), %esi
  8048e13:	bb 01 00 00 00 movl $1, %ebx
  8048e18:	8d 04 bd 00 00 00 00 leal (,%edi,4), %eax
@@ -296,6 +312,9 @@ phase_6:
  8048e3e:	47 	incl	%edi
  8048e3f:	83 ff 05 	cmpl $5, %edi
  8048e42:	7e cc 	jle	-52 <phase_6+78>
+
+#这里又是一个循环，我要疯了。 
+
  8048e44:	8b 75 d0 	movl -48(%ebp), %esi
  8048e47:	89 75 cc 	movl %esi, -52(%ebp)
  8048e4a:	bf 01 00 00 00 movl $1, %edi
@@ -306,6 +325,11 @@ phase_6:
  8048e5a:	47 	incl	%edi
  8048e5b:	83 ff 05 	cmpl $5, %edi
  8048e5e:	7e f2 	jle	-14 <phase_6+BA>
+
+
+
+
+
  8048e60:	c7 46 08 00 00 00 00 movl $0, 8(%esi)
  8048e67:	8b 75 cc 	movl -52(%ebp), %esi
  8048e6a:	31 ff 	xorl	%edi, %edi
@@ -326,4 +350,36 @@ phase_6:
  8048e8d:	89 ec 	movl	%ebp, %esp
  8048e8f:	5d 	popl	%ebp
  8048e90:	c3 	retl
- 8048e91:	8d 76 00 	leal (%esi), %esi                
+ 8048e91:	8d 76 00 	leal (%esi), %esi                       
+不看具体的代码，我估计这后面的代码都是验证输入的顺序，所以我们找地址，直接看地址。
+
+esi应该是一个结构体：
+struct ipt{
+int ;
+int ;
+ipt* next;
+}
+应该是这样的一个结构结构体指针是4个字节，结构本身是字节对齐的。这个函数中只用到了每个结构体的第一个int，
+而且esi总是从-52（ebp）开始，那么就来看看0x804b26c的值
+(gdb) x/x 0x804b26c
+0x804b26c <node1>:	0xfd
+node1，
+第一个int是数据，第二int就是1 2 3 4 。。。吧，我只看了node1 和 node2 的第二个int 
+
+所以应该是让我们输入六个节点的大小，那么就来看看节点的数据，因为地址是在往下减，所以下一个是260.
+
+我找出来之后，排序还是bomb，在网上找个排序是4 2 6 3 1 5可以defuse。但是我找出来的node data不是这个顺序。
+node1:    fd
+node2:   d5
+node3:   2d
+node4:   e5
+node5:   d4
+node6:   b0
+难道这个汇编不是按照大小的么。
+
+好吧，不管了。
+
+
+secret_phase:
+
+怎么还有==。          
