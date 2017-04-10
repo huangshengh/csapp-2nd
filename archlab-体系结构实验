@@ -1,0 +1,513 @@
+Part A
+
+sum.ys
+迭代计算链表数据的和。根据书上y86来写。有个点是mov好像没有传立即数到存储器位置的。我见过的IA32，源操作数如果是数字的话只能传到寄存器上，但是好像没有把数字传到存储器位置的。
+
+这个代码是在centos32上运行成功，ubuntu32失败。不知道为什么。
+
+#execution begins at address 0
+		.pos 0
+init:	irmovl Stack, %esp 
+		irmovl Stack, %ebp 
+		call Main          
+		halt               
+#数据对齐，地址是4的倍数
+
+		.align 4
+ele1:	.long 0x00a
+		.long ele2
+ele2:	.long 0x0b0
+		.long ele3
+ele3:	.long 0xc00
+		.long 0
+
+
+Main:	pushl %ebp
+		rrmovl %esp,%ebp
+		irmovl ele1,%edx
+		pushl %edx 			
+		call sum
+		rrmovl %ebp,%esp
+		popl %ebp
+		ret
+
+sum:	pushl %ebp
+		rrmovl %esp, %ebp 
+		mrmovl 8(%ebp),%edx # get the ele1
+		xorl %eax,%eax      # val = 0
+		pushl %edi
+		andl %edx,%edx
+		je End
+Loop:	mrmovl (%edx), %ecx
+		addl %ecx,%eax
+		irmovl $4,%edi
+		addl %edi, %edx
+		mrmovl (%edx),%edx
+		addl %edx,%edx
+		jne Loop
+End:	rrmovl %ebp,%esp
+		popl %ebp
+		ret
+
+	.pos 0x100
+Stack:
+
+结果：
+Changes to registers:
+%eax:	0x00000000	0x0000428a
+%ecx:	0x00000000	0x00004280
+%edx:	0x00000000	0x60a84000
+%esp:	0x00000000	0x000000e8
+%ebp:	0x00000000	0x000000ec
+%edi:	0x00000000	0x00000004
+
+Changes to memory:
+0x00ec:	0x00000000	0x000000f8
+0x00f0:	0x00000000	0x0000003d
+0x00f4:	0x00000000	0x00000014
+0x00f8:	0x00000000	0x00000100
+0x00fc:	0x00000000	0x00000011
+
+
+
+rsum.ys
+递归的计算。
+
+这里出现一个错误：
+Error on line 3: Can't find label
+Line 3, Byte 0x0006:  init:  irmovl  Stack, %esp
+Error on line 4: Can't find label
+Line 4, Byte 0x000c:         irmovl  Stack, %ebp
+这个很奇怪，结果是如果你的stack label定义在文件底部，则在stack后需要一个额外的空行。
+
+rsum:	pushl %ebp
+		rrmovl %esp, %ebp 
+		mrmovl 8(%ebp),%edx # get the ele 这里的edx是ele，还是个地址
+		irmovl $0, %eax		#%eax先为0,每次递归都得为0,%eax == rest
+		andl %edx,%edx
+		je End			#（！ls)就直接返回0了
+		mrmovl (%edx),%ecx      # int val = ls->data
+		mrmovl 4(%edx), %edx	#ls = ls->next
+		pushl %edx
+		call rsum
+		addl %ecx,%eax #虽然前面%eax被mov成0，但是%eax存放的是函数返回值，所以应该是rsum的rest
+End:	rrmovl %ebp,%esp
+		popl %ebp
+		ret
+
+Changes to registers:
+%eax:	0x00000000	0x00002400
+%ecx:	0x00000000	0x00000c00
+%esp:	0x00000000	0x00000100
+%ebp:	0x00000000	0x00000100
+
+Changes to memory:
+0x00c8:	0x00000000	0x000000d4
+0x00cc:	0x00000000	0x0000006c
+0x00d4:	0x00000000	0x000000e0
+0x00d8:	0x00000000	0x0000006c
+0x00dc:	0x00000000	0x00000024
+0x00e0:	0x00000000	0x000000ec
+0x00e4:	0x00000000	0x0000006c
+0x00e8:	0x00000000	0x0000001c
+0x00ec:	0x00000000	0x000000f8
+0x00f0:	0x00000000	0x0000003d
+0x00f4:	0x00000000	0x00000014
+0x00f8:	0x00000000	0x00000100
+0x00fc:	0x00000000	0x00000011
+
+
+Copy.ys
+
+Copy:	pushl %ebp
+		rrmovl %esp, %ebp
+		mrmovl 8(%ebp),%edx #dest的地址
+		mrmovl 12(%ebp), %ecx #src的地址
+		pushl %ebx	#被调用者保存寄存器,但ebx在main中并没有被使用所以应该不用保存
+		irmovl $3, %ebx	#len=3
+		irmovl $0, %eax	#result=0 
+Loop:	mrmovl (%ecx), %esi #val = *src
+		irmovl $4, %edi
+		addl %edi, %ecx	#src++
+		rmmovl %esi,(%edx)	#*dest = val
+		addl %edi, %edx	#dest++
+		xorl %esi, %eax	#result ^= val
+		irmovl $1, %edi
+		subl %edi, %ebx	#len--
+		jg Loop
+		rrmovl %ebp,%esp
+		popl %ebp
+		ret
+Changes to registers:
+%eax:	0x00000000	0x00000cba
+%ecx:	0x00000000	0x00000020
+%edx:	0x00000000	0x0000002c
+%esp:	0x00000000	0x00000100
+%ebp:	0x00000000	0x00000100
+%esi:	0x00000000	0x00000c00
+%edi:	0x00000000	0x00000001
+
+Changes to memory:
+0x0020:	0x00000111	0x0000000a
+0x0024:	0x00000222	0x000000b0
+0x0028:	0x00000333	0x00000c00
+0x00e8:	0x00000000	0x000000f8
+0x00ec:	0x00000000	0x00000045
+0x00f0:	0x00000000	0x00000020
+0x00f4:	0x00000000	0x00000014
+0x00f8:	0x00000000	0x00000100
+0x00fc:	0x00000000	0x00000011
+
+Part B
+修改文件来支持两个新指令。HCL语言是来控制电子电路设计的，电路技术使用要求信号线上的高低电压表示不同位值。
+
+Iaddl将常数加到寄存器上。
+iaddl $4, %eax.
+
+这个指令在不同的阶段有不同的动作，所以从取指开始添加。
+
+iaddl 的计算出来的vale会进入写端口destE，从存储器读出来的valM会进入读端口destM，valc经过alu计算会在存储器中读出来。
+
+alu 的参数a可以是经过计算如从寄存器读出来的计算器的值，或者是valc
+alu的参数b是经过一次计算又从寄存器读出来的数据
+Alu还需要使用ifun指令。
+Iaddl指令会更新状态码
+Iaddl不会计算出存储器位置来存放data。
+iaddl的pc就是valp
+
+
+leave ={ mov %ebp, %esp;
+			  pop %ebp;
+}
+ Mov呢就是把R[%ebp]，放进R[%esp],
+pop ebp，就是. R[ebp] <- M[R[esp]],  R[esp] <- R[esp]+4.,pop把esp这个位置存储器上的值放在了寄存器rA上
+
+所以leave的步骤就是，
+译码： valA = r[ebp], valB=r[esp]
+执行： ValeE = valA+4
+访存： valM = M[valA] 
+写回： R[ebp] = valM
+			R[esp] = valE
+
+Int destE时说计算出来的ValE将放的位置，对于leave来说vale将放在esp上
+AluA就是valA，aluB就是4
+
+All 870 ISA Checks Succeed
+
+从取指阶段开始添加就可以了。这个HCL是根据这个seq顺序来设计的。
+
+#/* $begin seq-all-hcl */
+####################################################################
+#  HCL Description of Control for Single Cycle Y86 Processor SEQ   #
+#  Copyright (C) Randal E. Bryant, David R. O'Hallaron, 2010       #
+####################################################################
+
+## Your task is to implement the iaddl and leave instructions
+## The file contains a declaration of the icodes
+## for iaddl (IIADDL) and leave (ILEAVE).
+## Your job is to add the rest of the logic to make it work
+
+####################################################################
+#    C Include's.  Don't alter these                               #
+####################################################################
+
+quote '#include <stdio.h>'
+quote '#include "isa.h"'
+quote '#include "sim.h"'
+quote 'int sim_main(int argc, char *argv[]);'
+quote 'int gen_pc(){return 0;}'
+quote 'int main(int argc, char *argv[])'
+quote '  {plusmode=0;return sim_main(argc,argv);}'
+
+####################################################################
+#    Declarations.  Do not change/remove/delete any of these       #
+####################################################################
+
+##### Symbolic representation of Y86 Instruction Codes #############
+intsig INOP 	'I_NOP'
+intsig IHALT	'I_HALT'
+intsig IRRMOVL	'I_RRMOVL'
+intsig IIRMOVL	'I_IRMOVL'
+intsig IRMMOVL	'I_RMMOVL'
+intsig IMRMOVL	'I_MRMOVL'
+intsig IOPL	'I_ALU'
+intsig IJXX	'I_JMP'
+intsig ICALL	'I_CALL'
+intsig IRET	'I_RET'
+intsig IPUSHL	'I_PUSHL'
+intsig IPOPL	'I_POPL'
+# Instruction code for iaddl instruction
+intsig IIADDL	'I_IADDL'
+# Instruction code for leave instruction
+intsig ILEAVE	'I_LEAVE'
+
+##### Symbolic represenations of Y86 function codes                  #####
+intsig FNONE    'F_NONE'        # Default function code
+
+##### Symbolic representation of Y86 Registers referenced explicitly #####
+intsig RESP     'REG_ESP'    	# Stack Pointer
+intsig REBP     'REG_EBP'    	# Frame Pointer
+intsig RNONE    'REG_NONE'   	# Special value indicating "no register"
+
+##### ALU Functions referenced explicitly                            #####
+intsig ALUADD	'A_ADD'		# ALU should add its arguments
+
+##### Possible instruction status values                             #####
+intsig SAOK	'STAT_AOK'		# Normal execution
+intsig SADR	'STAT_ADR'	# Invalid memory address
+intsig SINS	'STAT_INS'	# Invalid instruction
+intsig SHLT	'STAT_HLT'	# Halt instruction encountered
+
+##### Signals that can be referenced by control logic ####################
+
+##### Fetch stage inputs		#####
+intsig pc 'pc'				# Program counter
+##### Fetch stage computations		#####
+intsig imem_icode 'imem_icode'		# icode field from instruction memory
+intsig imem_ifun  'imem_ifun' 		# ifun field from instruction memory
+intsig icode	  'icode'		# Instruction control code
+intsig ifun	  'ifun'		# Instruction function
+intsig rA	  'ra'			# rA field from instruction
+intsig rB	  'rb'			# rB field from instruction
+intsig valC	  'valc'		# Constant from instruction
+intsig valP	  'valp'		# Address of following instruction
+boolsig imem_error 'imem_error'		# Error signal from instruction memory
+boolsig instr_valid 'instr_valid'	# Is fetched instruction valid?
+
+##### Decode stage computations		#####
+intsig valA	'vala'			# Value from register A port
+intsig valB	'valb'			# Value from register B port
+
+##### Execute stage computations	#####
+intsig valE	'vale'			# Value computed by ALU
+boolsig Cnd	'cond'			# Branch test
+
+##### Memory stage computations		#####
+intsig valM	'valm'			# Value read from memory
+boolsig dmem_error 'dmem_error'		# Error signal from data memory
+
+
+####################################################################
+#    Control Signal Definitions.                                   #
+####################################################################
+
+################ Fetch Stage     ###################################
+
+# Determine instruction code
+#新添加的两个指令的icode 和 ifunc
+int icode = [
+	imem_error: INOP;
+	1: imem_icode;		# Default: get from instruction memory
+];
+
+# Determine instruction function
+int ifun = [
+	imem_error: FNONE;
+	1: imem_ifun;		# Default: get from instruction memory
+];
+
+#先在取指阶段把新添加的指令合法，
+bool instr_valid = icode in 
+	{ INOP, IHALT, IRRMOVL, IIRMOVL, IRMMOVL, IMRMOVL,
+	       IOPL, IJXX, ICALL, IRET, IPUSHL, IPOPL,IIADDL,ILEAVE };
+
+#iaddl明着需要寄存器
+# Does fetched instruction require a regid byte?
+bool need_regids =
+	icode in { IRRMOVL, IOPL, IPUSHL, IPOPL, 
+		     IIRMOVL, IRMMOVL, IMRMOVL,IIADDL };
+#iaddl 需要存储器
+# Does fetched instruction require a constant word?
+bool need_valC =
+	icode in { IIRMOVL, IRMMOVL, IMRMOVL, IJXX, ICALL,IIADDL };
+
+################ Decode Stage    ###################################
+
+## What register should be used as the A source?
+int srcA = [
+	icode in { IRRMOVL, IRMMOVL, IOPL, IPUSHL  } : rA;
+	icode in { IPOPL, IRET } : RESP;
+	icode in { ILEAVE } : REBP;
+	1 : RNONE; # Don't need register
+];
+
+# iaddl需要 srcB
+## What register should be used as the B source?
+int srcB = [
+	icode in { IOPL, IRMMOVL, IMRMOVL,IIADDL } : rB;
+	icode in { IPUSHL, IPOPL, ICALL, IRET, ILEAVE } : RESP;
+	1 : RNONE;  # Don't need register
+];
+
+## What register should be used as the E destination?
+int dstE = [
+	icode in { IRRMOVL } && Cnd : rB;
+	icode in { IIRMOVL, IOPL, IIADDL} : rB;
+	icode in { IPUSHL, IPOPL, ICALL, IRET,ILEAVE } : RESP;
+	1 : RNONE;  # Don't write any register
+];
+
+## What register should be used as the M destination?
+int dstM = [
+	icode in { IMRMOVL, IPOPL } : rA;
+	icode in { ILEAVE } : REBP;
+	1 : RNONE;  # Don't write any register
+];
+
+################ Execute Stage   ###################################
+
+## alu 的参数a可以是经过计算如从寄存器读出来的计算器的值，或者是valc
+## Select input A to ALU
+int aluA = [
+	icode in { IRRMOVL, IOPL,ILEAVE } : valA;
+	icode in { IIRMOVL, IRMMOVL, IMRMOVL,IIADDL } : valC;
+	icode in { ICALL, IPUSHL } : -4;
+	icode in { IRET, IPOPL } : 4;
+	# Other instructions don't need ALU
+];
+
+## alu的参数b是经过一次计算又从寄存器读出来的数据
+## Select input B to ALU
+int aluB = [
+	icode in { IRMMOVL, IMRMOVL, IOPL, ICALL, 
+		      IPUSHL, IRET, IPOPL, IIADDL } : valB;
+	icode in { IRRMOVL, IIRMOVL } : 0;
+	icode in { ILEAVE } : 4;
+	# Other instructions don't need ALU
+];
+
+##同时alu还需要使用ifun指令.
+## Set the ALU function
+int alufun = [
+	icode == IOPL : ifun;
+	icode == IIADDL : ifun;
+	icode == ILEAVE : ifun;
+	1 : ALUADD;
+];
+
+## Should the condition codes be updated?
+bool set_cc = icode in { IOPL,IIADDL };
+
+################ Memory Stage    ###################################
+
+## 从存储器中读数据
+## Set read control signal
+bool mem_read = icode in { IMRMOVL, IPOPL, IRET, IIADDL,ILEAVE};
+
+## 往存储器写数据
+## Set write control signal
+bool mem_write = icode in { IRMMOVL, IPUSHL, ICALL };
+
+##会计算出存储器位置
+## Select memory address
+int mem_addr = [
+	icode in { IRMMOVL, IPUSHL, ICALL, IMRMOVL } : valE;
+	icode in { IPOPL, IRET, ILEAVE } : valA;
+	# Other instructions don't need address
+];
+
+## 会往存储器里写值
+## Select memory input data
+int mem_data = [
+	# Value from register
+	icode in { IRMMOVL, IPUSHL } : valA;
+	# Return PC
+	icode == ICALL : valP;
+	# Default: Don't write anything
+];
+
+## Determine instruction status
+int Stat = [
+	imem_error || dmem_error : SADR;
+	!instr_valid: SINS;
+	icode == IHALT : SHLT;
+	1 : SAOK;
+];
+
+################ Program Counter Update ############################
+
+## What address should instruction be fetched at
+
+int new_pc = [
+	# Call.  Use instruction constant
+	icode == ICALL : valC;
+	# Taken branch.  Use instruction constant
+	icode == IJXX && Cnd : valC;
+	# Completion of RET instruction.  Use value from stack
+	icode == IRET : valM;
+	# Default: Use incremented PC
+	1 : valP;
+];
+#/* $end seq-all-hcl */
+
+
+Part C：
+
+重写pipe和ncopy.ys提高效率。在pipe的hcl中实现iaddl，虽然pipe的hcl比较复杂，还有转发，但是iaddl指令和在seq中是一样的。
+
+Average CPE	1.41
+Score	60.0/60.0
+
+
+# You can modify this portion
+	# Loop header
+	    xorl    %eax , %eax
+        iaddl   $-4 , %edx #len = len -4
+        andl    %edx ,  %edx    
+        jl  remian
+Loop:   mrmovl (%ebx) , %esi
+        mrmovl 4(%ebx),%edi
+        rmmovl %esi , (%ecx)
+        andl    %esi ,%esi
+        jle LNpos1
+        iaddl   $1 , %eax
+LNpos1: rmmovl %edi , 4(%ecx)
+        andl    %edi , %edi
+        jle     LNpos2
+        iaddl   $1, %eax
+LNpos2:mrmovl 8(%ebx) , %esi
+        mrmovl 12(%ebx),%edi
+        rmmovl %esi ,8 (%ecx)
+        andl    %esi ,%esi
+        jle LNpos3
+        iaddl   $1 , %eax
+LNpos3: rmmovl %edi , 12(%ecx)
+        andl    %edi , %edi
+        jle     nextLoop
+        iaddl   $1, %eax
+nextLoop:
+        iaddl   $16,%ebx
+        iaddl   $16,%ecx
+        iaddl   $-4,%edx
+        jge Loop            
+
+# maybe just remain less than 3
+remian:  iaddl  $4 , %edx  # Restore the true len
+        iaddl   $-1, %edx
+        jl  Done
+        mrmovl (%ebx) , %esi
+        mrmovl 4(%ebx),%edi
+        rmmovl %esi , (%ecx)
+        andl    %esi ,%esi
+        jle rNpos
+        iaddl   $1 , %eax
+rNpos:  
+        iaddl   $-1, %edx
+        jl  Done
+        rmmovl  %edi , 4(%ecx)
+        andl    %edi , %edi
+        jle     rNpos1
+        iaddl   $1, %eax
+rNpos1:
+        iaddl   $-1 , %edx 
+        jl  Done
+        mrmovl 8(%ebx) , %esi
+        rmmovl %esi , 8(%ecx)
+        andl    %esi ,%esi
+        jle Done
+        iaddl   $1 , %eax
+
+
+修改ncopy是从网上抄的。这里http://blog.csdn.net/u012336567/article/details/51867766
+
+转发已经忘记了，这本书这星期终于看完了，接下来把实验做完，最后11，12两章的服务器写一下。咋买一本第三版今年冬天拿来复习。
